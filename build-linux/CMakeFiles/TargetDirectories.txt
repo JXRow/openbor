@@ -1,4 +1,0 @@
-/src/build-linux/CMakeFiles/VersionInfo.dir
-/src/build-linux/CMakeFiles/OpenBOR.dir
-/src/build-linux/CMakeFiles/edit_cache.dir
-/src/build-linux/CMakeFiles/rebuild_cache.dir

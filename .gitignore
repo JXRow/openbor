@@ -19,3 +19,6 @@ tools/win-sdk/*
 **/.DS_Store
 tools/borpak/source/borpak
 build/
+build/
+build-linux/
+/engine/version.tmp
