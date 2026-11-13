@@ -14,7 +14,7 @@
 | 版本 | **SoRX Beta 36.CC3**(Kratus,zip 内 Changelog 日期 2026-10-06) |
 | 下载源 | itch.io `https://fgames9000.itch.io/streets-of-rage-x`,upload_id **19704437**(WINDOWS_LINUX.zip,432MB) |
 | 校验 | SHA256 `90dac70c56e71f51618e4844aa3ff0c2720f5e4d2a28321dceafe18967256066` |
-| 本地位置 | Mac: `openbor-launch/Paks/SORX.pak`(386,482,231 B);掌机: `/mnt/mmc/Roms/APPS/sorx/Paks/` |
+| 本地位置 | Mac: `openbor-launch/Paks/SORX.pak`(386,482,231 B);掌机: `/mnt/mmc/Roms/APPS/RGDS-SORX/Paks/` |
 | 安全检查 | 结构干净:无路径穿越/双扩展名/宏;启动脚本仅 chmod+cd+LD_LIBRARY_PATH;只运行自编译引擎,不执行包内 exe |
 
 ### 引擎(OpenBOR)——版本兼容矩阵
@@ -105,7 +105,7 @@ RGDS-SORX/
 ├── OpenBOR          aarch64 引擎
 ├── Paks/SORX.pak    游戏数据
 ├── lib/libvpx.so.7  掌机缺的 so
-├── RGDS-SORX.sh     启动器(基于 dirname 自定位,日志 → /tmp/RGDS-SORX.log)
+├── RGDS-SORX.sh     启动器(自定位 + MUOS 交接,见下节)
 ├── install.sh       上传后运行一次:装菜单入口 APPS/RGDS-SORX.sh + Imgs/RGDS-SORX.png
 ├── icon.png         菜单图标
 └── README.txt
@@ -126,9 +126,39 @@ ssh -i ~/.ssh/id_ed25519 root@<掌机IP> 'sh /mnt/mmc/Roms/APPS/RGDS-SORX/instal
 - `Saves/ Logs/ ScreenShots/` 均相对当前目录生成 → 启动脚本必须先 `cd` 到应用目录
 - 键位存档:`Saves/<pak名>.controls`(每 pak 独立)
 
-### 掌机上的旧布局(已可用,后续可迁移)
+### 启动器 `RGDS-SORX.sh` 的完整行为(菜单/ssh 通用)
 
-`/mnt/mmc/Roms/APPS/sorx/{OpenBOR,Paks/SORX.pak,lib/}` + `APPS/sorx.sh`,与 RGDS-SORX 等价。
+1. **自定位游戏目录**:取脚本所在目录;若同目录没有 `OpenBOR`(菜单入口是 `APPS/RGDS-SORX.sh` 这份副本),回退到同名文件夹 `APPS/RGDS-SORX/`。两处副本内容相同,均同步维护
+2. **清理残留游戏实例**(`pidof OpenBOR` → kill),防双开抢屏
+3. **若 MUOS 前端还在运行**(ssh/手动启动,没走菜单流程):`touch /tmp/stopAPP.ini` + `killall muos2.bin` —— 官方停机信号,让外层监督循环退出;游戏退出后由启动器恢复前端
+4. 启动游戏(阻塞直到退出),`stdout` → `/tmp/RGDS-SORX.log`,启动器自身动作 → `/tmp/rgds-launcher.log`
+5. **恢复前端**:删 `stopAPP.ini`;若前端是第 3 步杀的(`FRONTEND_RELAUNCH=1`)且当前没有别的监督循环在跑(`pgrep dmenu_ln/loadapp.sh` 防双开),`setsid` 重跑 `/mnt/vendor/ctrl/loadapp.sh`,45 秒后补一句 `nmcli networking on`(loadapp 开机会关网络,见坑 #18)
+
+调试日志 `/tmp/rgds-launcher.log` 会记录每步时间戳与判断结果(`relaunch/dmenu/loadapp` 计数),前端没恢复时先看它。
+
+### MUOS 前端交接机制(下屏 OS 为什么会双开/不退出)
+
+RG DS 下屏跑 MUOS 前端,官方启动链是:
+
+```
+/etc/inittab → loadapp.sh(外层监督循环,while true)
+                └→ dmenu_ln(监督循环) → muos2.bin(前端菜单)
+                     菜单里选应用:muos2 自己退出并写 /tmp/.next(应用脚本路径,不删除)
+                     dmenu_ln 检测 muos2 退出 → sh /tmp/.next → 应用运行
+                     应用退出 → dmenu_ln 返回 → loadapp 循环重启 muos2(前端回来)
+```
+
+要点:
+- **菜单启动 = 官方正路**:muos2 自己退,`dmenu_ln` 负责运行应用和恢复前端,启动器什么都不用做(实测日志:`relaunch=0, dmenu=1, loadapp=1`,退出游戏后前端自动回来且不双开)
+- **ssh 直启绕过 `.next` 机制**:muos2 不知道有应用要跑,继续占下屏 → 双屏同时响应、菜单和游戏双份声音。启动器的第 3/5 步(stopAPP.ini + 杀 muos2 + 事后恢复)就是为这条路准备的
+- **`/tmp/stopAPP.ini`** 存在时 loadapp 外层循环 break(整个监督链退出);恢复前端前必须先删掉它,且用 `pgrep` 防止和残留监督循环双开
+- **kill muos2(非正常退出)**:dmenu_ln 走 else 分支 `sleep 30` 再返回,所以杀完前端要等它消化,或直接靠启动器第 5 步重新拉起 loadapp.sh
+
+> **休眠坑**:前端被停 + 游戏也没在跑时,系统无活动会自动休眠(ping 不通但 ARP 存在)。待办:游戏运行期间加禁休眠。
+
+### 掌机布局(当前唯一)
+
+`/mnt/mmc/Roms/APPS/RGDS-SORX/`(自包含包)+ `APPS/RGDS-SORX.sh`(菜单入口)+ `Imgs/RGDS-SORX.png`(图标)。旧布局 `APPS/sorx*` 已删除,存档已迁到新目录 `Saves/`。
 
 ---
 
@@ -188,6 +218,11 @@ ssh 掌机 '/tmp/audiotest'    # 期待 "opened: freq=44100" 而非 busy/refused
 | 13 | GitHub 大传输不稳 | ssh 22 超时、443 断流、tarball 是唯一稳定通道 | clone 用 codeload tarball + `--filter=blob:none` 部分克隆;SSH 走 `ssh.github.com:443`(已写进 `~/.ssh/config`) |
 | 14 | git 大仓库 | 1.5GB 二十年历史 | 部分克隆瘦身到 147MB(考古去 GitHub 网页) |
 | 15 | 版本号显示 `Build ,` | 引擎横幅空版本 | 容器内无 git,`version.sh` 取不到提交号,纯外观问题 |
+| 16 | 启动器 dirname 定位 | 菜单点 RGDS-SORX 黑屏秒退,`./OpenBOR: No such file or directory` | 菜单入口是 `APPS/RGDS-SORX.sh` 副本,dirname=`APPS` 不是游戏目录;启动器加"同目录无 OpenBOR 时回退同名文件夹" |
+| 17 | ssh 直启不退 OS | 游戏运行时下屏还是 MUOS,双屏同时响应+双份声音 | 启动器走 stopAPP.ini+杀 muos2 的交接逻辑(见第四节);菜单启动走官方 `.next` 正路则无此问题 |
+| 18 | loadapp.sh 恢复前端顺带关网络 | 游戏退出、前端恢复后 ssh 断连(ping 通但 22 不通/直接失联) | loadapp.sh 开机流程内含 `nmcli networking off` + `bluetoothctl power off`(官方默认);启动器恢复前端后延迟 45s `nmcli networking on` 补救 |
+| 19 | 前端停机后系统休眠 | 游戏退出、前端未恢复时设备静置 → 自动休眠,ssh 完全不通(ARP 还在) | 手动唤醒;待办:游戏运行期间禁休眠 |
+| 20 | 掌机写配置文件 | heredoc 在串行链路上易写坏(曾把 asound.conf 写成 0 字节) | 本地写好再 `scp` 上去,不要在 ssh 命令串里内联 heredoc |
 
 ---
 
@@ -195,11 +230,15 @@ ssh 掌机 '/tmp/audiotest'    # 期待 "opened: freq=44100" 而非 busy/refused
 
 ```sh
 # 游戏没画面/闪退 → 看引擎日志(不是 stdout!)
-ssh 掌机 'tail -30 /mnt/mmc/Roms/APPS/RGDS-SORX/Logs/OpenBorLog.txt'   # 新布局
+ssh 掌机 'tail -30 /mnt/mmc/Roms/APPS/RGDS-SORX/Logs/OpenBorLog.txt'
 # 无声 → 确认 dmix 配置 + 掌机是否重启过
 ssh 掌机 'cat /etc/asound.conf | head -5; grep -c "can.t play" /mnt/mmc/Roms/APPS/RGDS-SORX/Logs/OpenBorLog.txt'
 # 进程还活着吗
 ssh 掌机 'pidof OpenBOR; ps -o pid,stat,etime,pcpu -p $(pidof OpenBOR)'
+# 前端/监督循环状态(退出游戏后 OS 没回来时)
+ssh 掌机 'cat /tmp/rgds-launcher.log; pidof muos2.bin; pgrep -fc "vendor/ctrl/dmenu_ln"; ls /tmp/stopAPP.ini 2>/dev/null'
+# 修复:手动救回前端(注意:会顺带关 WiFi,45s 后若启动器在跑会自动开回;手动跑则要自己补 nmcli networking on)
+ssh 掌机 'rm -f /tmp/stopAPP.ini; nohup setsid /mnt/vendor/ctrl/loadapp.sh >/dev/null 2>&1 &'
 ```
 
 ## 八、仓库与文件位置速查
