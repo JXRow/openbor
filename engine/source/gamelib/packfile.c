@@ -73,6 +73,9 @@
 * Requirements for packfiles.
 */
 #define PACKMAGIC      0x4B434150U
+/* Nonstandard magic used by some 4.0-era game packs (e.g. SORX); table
+ * layout is otherwise identical to PAK32, so accept it as an alias. */
+#define PACKMAGIC_ALT  0x7F14111DU
 #define PACK_HEADER_SIZE 8U
 #define PAK32_TABLE_ENTRY_HEADER_SIZE 12U
 #define PAK64_TABLE_ENTRY_HEADER_SIZE  20U
@@ -369,7 +372,7 @@ static int packfile_read_format_fd(int file_descriptor, packfile_format *format)
         return 0;
     }
 
-    if(!packfile_read_lsb32_fd(file_descriptor, &magic) || magic != PACKMAGIC)  {
+    if(!packfile_read_lsb32_fd(file_descriptor, &magic) || (magic != PACKMAGIC && magic != PACKMAGIC_ALT))  {
         return 0;
     }
 

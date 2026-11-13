@@ -10,7 +10,11 @@ elseif(NOT CMAKE_PREFIX_PATH)
   message(FATAL_ERROR "CMAKE_PREFIX_PATH and CMAKE_LIBRARY_PATH are required.")
 endif()
 
-set(SDKPATH "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+if(EXISTS "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+  set(SDKPATH "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+else()
+  set(SDKPATH "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
+endif()
 set(COMMON_COMPILER_FLAGS "${COMMON_COMPILER_FLAGS}  -Wno-void-pointer-to-enum-cast -Wno-int-conversion")
 
 set(BUILD_LINUX ON)
